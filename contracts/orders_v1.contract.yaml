@@ -1,0 +1,105 @@
+# ==============================================================================
+# DATA & SEMANTIC CONTRACT SPECIFICATION (v1.0.0)
+# Dataset: gold_orders
+# Target: Unity Catalog (e.g., prod_catalog.sales_domain.gold_orders)
+# ==============================================================================
+version: "1.0.0"
+dataset: "gold_orders"
+domain: "sales"
+owner:
+  team: "Sales Analytics Data Product Team"
+  slack: "#team-sales-data"
+  email: "sales-data@example.com"
+
+# ------------------------------------------------------------------------------
+# Unity Catalog Destination
+# ------------------------------------------------------------------------------
+target:
+  catalog: "dados_em_chamas"
+  schema: "gold"
+  table: "orders"
+  format: "delta"
+
+# ------------------------------------------------------------------------------
+# Semantic & Business Metadata
+# ------------------------------------------------------------------------------
+description: "Tabela dimensional de pedidos faturados e confirmados para análise de receita."
+business_terms:
+  - term: "Faturamento Bruto"
+    definition: "Soma do amount de pedidos com status 'COMPLETED'"
+  - term: "SLA de Ingestão"
+    definition: "D+1 até as 06:00 BRT"
+
+# ------------------------------------------------------------------------------
+# Schema & Semantic Field Definitions
+# ------------------------------------------------------------------------------
+fields:
+  - name: "order_id"
+    type: "string"
+    nullable: false
+    description: "Identificador único universal do pedido (UUIDv4)"
+    semantic_type: "identifier"
+    primary_key: true
+
+  - name: "customer_id"
+    type: "string"
+    nullable: false
+    description: "Identificador do cliente no sistema CRM"
+    semantic_type: "foreign_key"
+    tags:
+      classification: "internal"
+
+  - name: "order_status"
+    type: "string"
+    nullable: false
+    description: "Status atual do ciclo de vida do pedido"
+    semantic_type: "categorical"
+    allowed_values:
+      - "PENDING"
+      - "PROCESSING"
+      - "COMPLETED"
+      - "CANCELLED"
+
+  - name: "total_amount"
+    type: "decimal(18,2)"
+    nullable: false
+    description: "Valor total bruto do pedido na moeda local"
+    semantic_type: "currency"
+    unit: "BRL"
+    checks:
+      - rule: "total_amount >= 0.0"
+        description: "O valor total do pedido não pode ser negativo"
+
+  - name: "customer_email"
+    type: "string"
+    nullable: true
+    description: "Email de contato do cliente no checkout"
+    semantic_type: "email"
+    tags:
+      classification: "PII"
+      gdpr_sensitive: "true"
+
+  - name: "created_at"
+    type: "timestamp"
+    nullable: false
+    description: "Momento exato (UTC) da realização do pedido"
+    semantic_type: "event_timestamp"
+
+# ------------------------------------------------------------------------------
+# Quality Expectations & SLA Contract (DLT / Expectation Syntax)
+# ------------------------------------------------------------------------------
+quality_checks:
+  - name: "valid_order_id_format"
+    expression: "length(order_id) >= 10"
+    action: "FAIL"   # Opções: FAIL (interrompe pipeline), DROP (descarta linha), WARN (registra alerta)
+    description: "IDs de pedidos devem possuir tamanho mínimo válido"
+
+  - name: "valid_amount_range"
+    expression: "total_amount >= 0 AND total_amount <= 1000000"
+    action: "FAIL"
+    description: "Valor fora do intervalo aceitável para compras B2C"
+
+  - name: "recent_orders_sla"
+    expression: "created_at >= '2020-01-01'"
+    action: "WARN"
+    description: "Alerta para registros legados anômalos"
